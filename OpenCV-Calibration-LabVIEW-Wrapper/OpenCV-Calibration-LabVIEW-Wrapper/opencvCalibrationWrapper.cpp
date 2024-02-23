@@ -6,11 +6,6 @@
 
 #define EXIT_SUCCESS 0
 #define EXIT_FAILURE 1
-/*
-int32_t calibrateCamera(const Arr3D_U16Hdl images, const Arr3D_U8Hdl masks) {
-	return EXIT_SUCCESS;
-}
-*/
 
 template <typename T>
 cv::Mat createMat(T* data, int rows, int cols, int chs = 1) {
@@ -20,10 +15,9 @@ cv::Mat createMat(T* data, int rows, int cols, int chs = 1) {
 	return mat;
 }
 
-int32_t extractCorners(const Arr3D_U16Hdl images, const Arr_ClusterPointXYHdl maskPolygons, const ClusterPointXYHdl extractedPoints) {
+int32_t extractCorners(const Arr3D_U16Hdl images, const Arr_ClusterPointXYHdl maskPolygons, const uint32_t cbRows, const uint32_t cbCols, Arr_ClusterPointXYfHdl extractedPoints) {
 
-
-	int nbrMasks = (*maskPolygons)->dimSizes[1];
+	int nbrMasks = (*maskPolygons)->dimSizes[0];
 
 	int imgCount = (*images)->dimSizes[0];
 	int rows = (*images)->dimSizes[1];
@@ -36,7 +30,7 @@ int32_t extractCorners(const Arr3D_U16Hdl images, const Arr_ClusterPointXYHdl ma
 
 	std::vector<cv::Mat> mats;
 	std::vector<cv::Mat> masks;
-	std::vector<cv::Mat> roieds;
+
 	for (int i = 0; i < imgCount; i++) {
 		mats.push_back(createMat(&(**images).elt[1 + stride * i], rows, cols));
 		cv::Mat mask = cv::Mat::zeros(rows, cols, CV_8U);
@@ -49,22 +43,46 @@ int32_t extractCorners(const Arr3D_U16Hdl images, const Arr_ClusterPointXYHdl ma
 			y = (**maskPolygons).Cluster[i * nbrPts + j].y;
 			pts.push_back(cv::Point2i(x, y));
 		}
-		cv::fillConvexPoly(mask, pts, cv::Scalar(1));
+		cv::fillConvexPoly(mask, pts, cv::Scalar(255));
 		masks.push_back(mask);
-		cv::Mat roied(rows, cols, CV_8UC1, cv::Scalar(127));
-		cv::normalize(mats[i], roied, 255, 0, cv::NORM_MINMAX, CV_8UC1, mask);
-		roieds.push_back(roied);
-		cv::imshow(std::to_string(i), roied);
-		cv::waitKey(1);
 	}
 
 	calib::CameraCalibrator calibrator;
 	std::vector < std::vector<cv::Point2f>> extractedPointsVec;
 
-	if (calibrator.extractPoints(roieds, extractedPointsVec))
+	const int nbrCbPoints = cbRows * cbCols;
+
+
+	if (calibrator.extractPoints(mats,masks,cbRows, cbCols, extractedPointsVec))
 		return EXIT_FAILURE;
 
+	if (extractedPointsVec.size() != imgCount)
+		return EXIT_FAILURE;
 
+	for (auto vec : extractedPointsVec) {
+		if (vec.size() != nbrCbPoints)
+			return EXIT_FAILURE;
+	}
+
+	int extractedPointsSize = (extractedPointsVec.size() * sizeof(cv::Point2f) * nbrCbPoints);
+	MgErr err = NumericArrayResize(uW, 1L, (UHandle*)&extractedPoints, extractedPointsSize);
+	if (err)
+		return err;
+
+	(**extractedPoints).dimSizes[0] = extractedPointsVec.size();
+	(**extractedPoints).dimSizes[1] = nbrCbPoints;
+
+	//does this produces same output as for loop?
+	//MoveBlock(extractedPointsVec.data(), (*extractedPoints)->Cluster, extractedPointsSize);
+
+	for (int m = 0; m < extractedPointsVec.size(); m++) {
+		int nbrExtractedPts = extractedPointsVec[m].size();
+		for (size_t n = 0; n < nbrExtractedPts; n++)
+		{
+			(**extractedPoints).Cluster[m * nbrCbPoints + n].x = extractedPointsVec[m][n].x;
+			(**extractedPoints).Cluster[m * nbrCbPoints + n].y = extractedPointsVec[m][n].y;
+		}
+	}
 
 	return EXIT_SUCCESS;
 }

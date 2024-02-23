@@ -9,15 +9,49 @@ namespace calib {
 	bool runCalibrationAndSave(Settings& s, cv::Size imageSize, cv::Mat& cameraMatrix, cv::Mat& distCoeffs,
 		std::vector<std::vector<cv::Point2f> > imagePoints);
 
-	int CameraCalibrator::extractPoints(std::vector< cv::Mat >& images, std::vector< std::vector<cv::Point2f> >& extractedPoints) {
+	int CameraCalibrator::extractPoints(std::vector< cv::Mat >& images, std::vector< cv::Mat >& masks,int cbRows, int cbCols, std::vector< std::vector<cv::Point2f> >& extractedPoints) {
 		
 		Settings s;
-		s.boardSize = cv::Size(17,22);
+		s.boardSize = cv::Size(cbRows, cbCols);
 		std::vector<cv::Point2f> pointBuf;
 		bool found;
 		for (size_t i = 0; i < images.size(); i++)
 		{
-			found = cv::findChessboardCorners(images.at(i), s.boardSize, pointBuf, cv::CALIB_CB_ADAPTIVE_THRESH | cv::CALIB_CB_FAST_CHECK | cv::CALIB_CB_NORMALIZE_IMAGE);
+			cv::Mat normalized;
+			cv::normalize(images[i], normalized, 255, 0, cv::NORM_MINMAX, CV_8UC1, masks[i]);
+			cv::Mat invertedMask = 255-masks[i];
+			normalized = normalized + invertedMask;
+			cv::Mat thresholded;
+			cv::adaptiveThreshold(normalized, thresholded, 255, cv::ADAPTIVE_THRESH_GAUSSIAN_C, cv::THRESH_BINARY, 51, 2);
+			cv::imshow(std::to_string(i), thresholded);
+			cv::waitKey(1);
+
+			found = cv::findChessboardCorners(thresholded, s.boardSize, pointBuf, cv::CALIB_CB_EXHAUSTIVE + cv::CALIB_CB_ACCURACY);
+			if (!found) {
+				found=cv::findChessboardCornersSB(thresholded, s.boardSize, pointBuf, cv::CALIB_CB_EXHAUSTIVE+ cv::CALIB_CB_ACCURACY);
+			}
+			if (!found)
+				return EXIT_FAILURE;
+			cv::Mat normalizedF;
+			cv::normalize(images[i], normalizedF, 1.0, 0, cv::NORM_MINMAX, CV_32FC1, masks[i]);
+			cv::cornerSubPix(normalizedF, pointBuf, cv::Size(11, 11),
+				cv::Size(-1, -1), cv::TermCriteria(cv::TermCriteria::MAX_ITER + cv::TermCriteria::EPS, 11, 0.1));
+
+			if (found) {
+				cv::Mat imageBGR;
+				cv::cvtColor(normalized, imageBGR, cv::COLOR_GRAY2BGR);
+				cv::drawChessboardCorners(imageBGR, s.boardSize, cv::Mat(pointBuf), found);
+				cv::imshow(std::to_string(i)+"e", imageBGR);
+				cv::waitKey(1);
+			}
+			extractedPoints.push_back(std::vector<cv::Point2f>());
+
+			if (pointBuf.size() != cbRows * cbCols)
+				return EXIT_FAILURE;
+			for (size_t k = 0; k < pointBuf.size(); k++)
+			{
+				extractedPoints[i].push_back(pointBuf[k]);
+			}
 		}
 		return EXIT_SUCCESS;
 	}
