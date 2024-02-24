@@ -9,7 +9,8 @@ namespace calib {
 	bool runCalibrationAndSave(Settings& s, cv::Size imageSize, cv::Mat& cameraMatrix, cv::Mat& distCoeffs,
 		std::vector<std::vector<cv::Point2f> > imagePoints);
 
-	int CameraCalibrator::extractPoints(std::vector< cv::Mat >& images, std::vector< cv::Mat >& masks,int cbRows, int cbCols, std::vector< std::vector<cv::Point2f> >& extractedPoints) {
+	int CameraCalibrator::extractPoints(std::vector< cv::Mat >& images, std::vector< cv::Mat >& masks,\
+		int cbRows, int cbCols, std::vector< std::vector<cv::Point2f> >& extractedPoints, std::vector<cv::Mat>& imagesExtracted) {
 		
 		Settings s;
 		s.boardSize = cv::Size(cbRows, cbCols);
@@ -23,8 +24,11 @@ namespace calib {
 			normalized = normalized + invertedMask;
 			cv::Mat thresholded;
 			cv::adaptiveThreshold(normalized, thresholded, 255, cv::ADAPTIVE_THRESH_GAUSSIAN_C, cv::THRESH_BINARY, 51, 2);
-			cv::imshow(std::to_string(i), thresholded);
-			cv::waitKey(1);
+			cv::Mat thresholdBGRA;
+			cv::cvtColor(thresholded, thresholdBGRA, cv::COLOR_GRAY2BGRA);
+			imagesExtracted.push_back(thresholdBGRA);
+			//cv::imshow(std::to_string(i), thresholded);
+			//cv::waitKey(1);
 
 			found = cv::findChessboardCorners(thresholded, s.boardSize, pointBuf, cv::CALIB_CB_EXHAUSTIVE + cv::CALIB_CB_ACCURACY);
 			if (!found) {
@@ -38,11 +42,12 @@ namespace calib {
 				cv::Size(-1, -1), cv::TermCriteria(cv::TermCriteria::MAX_ITER + cv::TermCriteria::EPS, 11, 0.1));
 
 			if (found) {
-				cv::Mat imageBGR;
-				cv::cvtColor(normalized, imageBGR, cv::COLOR_GRAY2BGR);
-				cv::drawChessboardCorners(imageBGR, s.boardSize, cv::Mat(pointBuf), found);
-				cv::imshow(std::to_string(i)+"e", imageBGR);
-				cv::waitKey(1);
+				cv::Mat imageBGRA;
+				cv::cvtColor(normalized, imageBGRA, cv::COLOR_GRAY2BGRA);
+				cv::drawChessboardCorners(imageBGRA, s.boardSize, cv::Mat(pointBuf), found);
+				imagesExtracted.push_back(imageBGRA);
+				//cv::imshow(std::to_string(i)+"e", imageBGRA);
+				//cv::waitKey(1);
 			}
 			extractedPoints.push_back(std::vector<cv::Point2f>());
 

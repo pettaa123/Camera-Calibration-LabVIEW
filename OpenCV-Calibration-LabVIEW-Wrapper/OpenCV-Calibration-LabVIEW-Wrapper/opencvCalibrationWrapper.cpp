@@ -15,7 +15,8 @@ cv::Mat createMat(T* data, int rows, int cols, int chs = 1) {
 	return mat;
 }
 
-int32_t extractCorners(const Arr3D_U16Hdl images, const Arr_ClusterPointXYHdl maskPolygons, const uint32_t cbRows, const uint32_t cbCols, Arr_ClusterPointXYfHdl extractedPoints) {
+int32_t extractCorners(const Arr3D_U16Hdl images, const Arr_ClusterPointXYHdl maskPolygons,\
+	const uint32_t cbRows, const uint32_t cbCols, Arr_ClusterPointXYfHdl extractedPoints, Arr3D_U32Hdl imagesExtracted) {
 
 	int nbrMasks = (*maskPolygons)->dimSizes[0];
 
@@ -52,8 +53,9 @@ int32_t extractCorners(const Arr3D_U16Hdl images, const Arr_ClusterPointXYHdl ma
 
 	const int nbrCbPoints = cbRows * cbCols;
 
+	std::vector<cv::Mat> imagesExtractedVec;
 
-	if (calibrator.extractPoints(mats,masks,cbRows, cbCols, extractedPointsVec))
+	if (calibrator.extractPoints(mats, masks, cbRows, cbCols, extractedPointsVec, imagesExtractedVec))
 		return EXIT_FAILURE;
 
 	if (extractedPointsVec.size() != imgCount)
@@ -83,6 +85,20 @@ int32_t extractCorners(const Arr3D_U16Hdl images, const Arr_ClusterPointXYHdl ma
 			(**extractedPoints).Cluster[m * nbrCbPoints + n].y = extractedPointsVec[m][n].y;
 		}
 	}
+
+
+
+	err = NumericArrayResize(uW, 1L, (UHandle*)&imagesExtracted, sizeof(uint32_t) * imgCount * 2 * rows * cols);
+	if (err)
+		return err;
+
+	for (int p = 0; p < imagesExtractedVec.size(); p++) {
+		MoveBlock(imagesExtractedVec[p].data, &(*imagesExtracted)->elt[p* rows * cols], imgCount * rows * cols * sizeof(uint32_t));
+	}
+
+	(*imagesExtracted)->dimSizes[0] = imgCount * 2;
+	(*imagesExtracted)->dimSizes[1] = rows;
+	(*imagesExtracted)->dimSizes[2] = cols;
 
 	return EXIT_SUCCESS;
 }

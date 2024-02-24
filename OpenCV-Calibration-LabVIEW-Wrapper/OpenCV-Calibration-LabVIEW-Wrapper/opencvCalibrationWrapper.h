@@ -49,6 +49,12 @@ typedef struct {
 } Arr_ClusterPointXYf;
 typedef Arr_ClusterPointXYf** Arr_ClusterPointXYfHdl;
 
+typedef struct {
+	int32 dimSizes[3];
+	uint32_t elt[1];
+} Arr3D_U32;
+typedef Arr3D_U32** Arr3D_U32Hdl;
+
 
 
 #include "lv_epilog.h"
@@ -60,7 +66,8 @@ typedef Arr_ClusterPointXYf** Arr_ClusterPointXYfHdl;
 #endif
 
 
-extern "C" OPENCVCALIBDLL_API int32_t extractCorners(const Arr3D_U16Hdl images, const Arr_ClusterPointXYHdl maskPolygons,const uint32_t cbRows,const uint32_t cbCols, Arr_ClusterPointXYfHdl extractedPoints);
+extern "C" OPENCVCALIBDLL_API int32_t extractCorners(const Arr3D_U16Hdl images, const Arr_ClusterPointXYHdl maskPolygons,\
+	const uint32_t cbRows,const uint32_t cbCols, Arr_ClusterPointXYfHdl extractedPoints, Arr3D_U32Hdl imagesExtracted);
 //extern "C" OPENCVCALIBDLL_API int32_t calibrateCamera(const Arr3D_U16Hdl images,const Arr3D_DBLHdl masks, Arr3D_DBLHdl extractedPoints);
 
 

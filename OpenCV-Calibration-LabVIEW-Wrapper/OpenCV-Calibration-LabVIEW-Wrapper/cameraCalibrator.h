@@ -17,7 +17,8 @@ namespace calib {
 		const char ESC_KEY = 27;
 		Settings s;
 	public:
-		int extractPoints(std::vector<cv::Mat> &images, std::vector< cv::Mat >& masks,int cbRows,int cbCols, std::vector< std::vector<cv::Point2f> > &extractedPoints);
+		int extractPoints(std::vector<cv::Mat> &images, std::vector< cv::Mat >& masks,\
+			int cbRows,int cbCols, std::vector< std::vector<cv::Point2f> > &extractedPoints, std::vector<cv::Mat>& imagesExtracted);
 		int doCalibration(std::vector<cv::Mat> &images, std::vector< cv::Mat > &masks);
 
 	};
