@@ -6,4 +6,5 @@
 	<Property Name="NI.LV.All.SourceOnly" Type="Bool">true</Property>
 	<Item Name="Draw Polygon (SubVI).vi" Type="VI" URL="../Draw Polygon (SubVI).vi"/>
 	<Item Name="module.vi" Type="VI" URL="../module.vi"/>
+	<Item Name="Overlay Circle.vi" Type="VI" URL="../Overlay Circle.vi"/>
 </Library>

@@ -1,5 +1,6 @@
 #include "cameraCalibrator.h"
 #include <opencv2/calib3d.hpp>
+#include <opencv2/calib3d/calib3d_c.h>
 #include <opencv2/imgproc.hpp>
 #include <opencv2/highgui.hpp>
 #include <iostream>
@@ -9,9 +10,130 @@ namespace calib {
 	bool runCalibrationAndSave(Settings& s, cv::Size imageSize, cv::Mat& cameraMatrix, cv::Mat& distCoeffs,
 		std::vector<std::vector<cv::Point2f> > imagePoints);
 
-	int CameraCalibrator::extractPoints(std::vector< cv::Mat >& images, std::vector< cv::Mat >& masks,\
+	int CamCalibrator::runCalibration(std::vector<std::vector<cv::Point2f>> imagePoints, int flags, cv::Mat& cameraMatrix,\
+		cv::Mat& distCoeffs, std::vector<cv::Mat>& rvecs, std::vector<cv::Mat>& tvecs, std::vector<float>& reprojErrs, double& totalAvgErr) {
+
+		if (flags & CV_CALIB_FIX_ASPECT_RATIO)
+			cameraMatrix.at<double>(0, 0) = s.aspectRatio;
+		distCoeffs = cv::Mat::zeros(8, 1, CV_64F);
+		std::vector<std::vector<cv::Point3f> > objectPoints(1);
+
+		for (int i = 0; i < s.boardSize.height; i++)
+			for (int j = 0; j < s.boardSize.width; j++)
+				objectPoints[0].push_back(cv::Point3f(float(j * s.squareSize), float(i * s.squareSize), 0));
+
+		objectPoints.resize(imagePoints.size(), objectPoints[0]);
+
+		double rms = calibrateCamera(objectPoints, imagePoints, s.imageSize, cameraMatrix,
+			distCoeffs, rvecs, tvecs, flags | CV_CALIB_FIX_K4 | CV_CALIB_FIX_K5);
+		///*|CV_CALIB_FIX_K3*/|CV_CALIB_FIX_K4|CV_CALIB_FIX_K5);
+
+		bool ok = checkRange(cameraMatrix) && checkRange(distCoeffs);
+
+		totalAvgErr = computeReprojectionErrors(objectPoints, imagePoints,
+			rvecs, tvecs, cameraMatrix, distCoeffs, reprojErrs);
+
+		return EXIT_SUCCESS;
+
+	}
+
+	double CamCalibrator::computeReprojectionErrors(
+		const std::vector<std::vector<cv::Point3f> >& objectPoints,
+		const std::vector<std::vector<cv::Point2f> >& imagePoints,
+		const std::vector<cv::Mat>& rvecs, const std::vector<cv::Mat>& tvecs,
+		const cv::Mat& cameraMatrix, const cv::Mat& distCoeffs,
+		std::vector<float>& perViewErrors)
+	{
+		std::vector<cv::Point2f> imagePoints2;
+		int i, totalPoints = 0;
+		double totalErr = 0, err;
+		perViewErrors.resize(objectPoints.size());
+
+		for (i = 0; i < (int)objectPoints.size(); i++)
+		{
+			projectPoints(cv::Mat(objectPoints[i]), rvecs[i], tvecs[i],
+				cameraMatrix, distCoeffs, imagePoints2);
+			err = cv::norm(cv::Mat(imagePoints[i]), cv::Mat(imagePoints2), cv::NORM_L2);
+			int n = (int)objectPoints[i].size();
+			perViewErrors[i] = (float)std::sqrt(err * err / n);
+			totalErr += err * err;
+			totalPoints += n;
+		}
+
+		return std::sqrt(totalErr / totalPoints);
+	}
+
+	int CamCalibrator::extractPoints(cv::Mat& image, cv::Mat& mask, \
+		std::vector<cv::Point2f>& extractedPoints, std::vector<cv::Mat>& imagesExtracted, int adaptiveThreshBlockSize, FIND_METHOD findMethod) {
+
+		s.imageSize = image.size();
+
+		std::vector<cv::Point2f> pointBuf;
+
+		cv::Mat normalized;
+		cv::normalize(image, normalized, 255, 0, cv::NORM_MINMAX, CV_8UC1, mask);
+		cv::Mat invertedMask = 255 - mask;
+		normalized = normalized + invertedMask;
+		cv::Mat thresholded;
+		cv::adaptiveThreshold(normalized, thresholded, 255, cv::ADAPTIVE_THRESH_GAUSSIAN_C, cv::THRESH_BINARY, adaptiveThreshBlockSize, 2);
+		cv::Mat thresholdBGRA;
+		cv::cvtColor(thresholded, thresholdBGRA, cv::COLOR_GRAY2BGRA);
+		imagesExtracted.push_back(thresholdBGRA);
+		//cv::imshow(std::to_string(i), thresholded);
+		//cv::waitKey(1);
+
+		cv::Mat normalizedF;
+		cv::normalize(image, normalizedF, 1.0, 0, cv::NORM_MINMAX, CV_32FC1, mask);
+
+		bool found;
+
+		switch (findMethod) {
+		case 0:
+			found = cv::findChessboardCorners(thresholded, s.boardSize, pointBuf, cv::CALIB_CB_EXHAUSTIVE + cv::CALIB_CB_ACCURACY);
+			if (!found)
+				return EXIT_FAILURE;
+			cv::cornerSubPix(normalizedF, pointBuf, cv::Size(11, 11),
+				cv::Size(-1, -1), cv::TermCriteria(cv::TermCriteria::MAX_ITER + cv::TermCriteria::EPS, 11, 0.1));
+			break;
+
+		case 1:
+			found = cv::findChessboardCornersSB(thresholded, s.boardSize, pointBuf, cv::CALIB_CB_EXHAUSTIVE + cv::CALIB_CB_ACCURACY);
+			break;
+
+		case 2:
+			//cornerSubPix
+			break;
+
+		default:
+			found = cv::findChessboardCornersSB(thresholded, s.boardSize, pointBuf, cv::CALIB_CB_EXHAUSTIVE + cv::CALIB_CB_ACCURACY);
+		}
+
+		if (!found) {
+			return EXIT_FAILURE;
+		}
+
+		cv::Mat imageBGRA;
+		cv::cvtColor(normalized, imageBGRA, cv::COLOR_GRAY2BGRA);
+		cv::drawChessboardCorners(imageBGRA, s.boardSize, cv::Mat(pointBuf), found);
+		imagesExtracted.push_back(imageBGRA);
+		//cv::imshow(std::to_string(i)+"e", imageBGRA);
+		//cv::waitKey(1);
+
+
+		if (pointBuf.size() != s.boardSize.height * s.boardSize.width)
+			return EXIT_FAILURE;
+
+		for (size_t k = 0; k < pointBuf.size(); k++)
+		{
+			extractedPoints.push_back(pointBuf[k]);
+		}
+
+		return EXIT_SUCCESS;
+	}
+
+	/*int CameraCalibrator::extractPointsMulti(std::vector< cv::Mat >& images, std::vector< cv::Mat >& masks, \
 		int cbRows, int cbCols, std::vector< std::vector<cv::Point2f> >& extractedPoints, std::vector<cv::Mat>& imagesExtracted) {
-		
+
 		Settings s;
 		s.boardSize = cv::Size(cbRows, cbCols);
 		std::vector<cv::Point2f> pointBuf;
@@ -20,7 +142,7 @@ namespace calib {
 		{
 			cv::Mat normalized;
 			cv::normalize(images[i], normalized, 255, 0, cv::NORM_MINMAX, CV_8UC1, masks[i]);
-			cv::Mat invertedMask = 255-masks[i];
+			cv::Mat invertedMask = 255 - masks[i];
 			normalized = normalized + invertedMask;
 			cv::Mat thresholded;
 			cv::adaptiveThreshold(normalized, thresholded, 255, cv::ADAPTIVE_THRESH_GAUSSIAN_C, cv::THRESH_BINARY, 51, 2);
@@ -32,7 +154,7 @@ namespace calib {
 
 			found = cv::findChessboardCorners(thresholded, s.boardSize, pointBuf, cv::CALIB_CB_EXHAUSTIVE + cv::CALIB_CB_ACCURACY);
 			if (!found) {
-				found=cv::findChessboardCornersSB(thresholded, s.boardSize, pointBuf, cv::CALIB_CB_EXHAUSTIVE+ cv::CALIB_CB_ACCURACY);
+				found = cv::findChessboardCornersSB(thresholded, s.boardSize, pointBuf, cv::CALIB_CB_EXHAUSTIVE + cv::CALIB_CB_ACCURACY);
 			}
 			if (!found)
 				return EXIT_FAILURE;
@@ -59,62 +181,9 @@ namespace calib {
 			}
 		}
 		return EXIT_SUCCESS;
-	}
-	int CameraCalibrator::doCalibration(std::vector<cv::Mat> &images, std::vector<cv::Mat> &masks) {
-
-		for (int i = 0; i < images.size(); ++i)
-		{
-			cv::Mat view = images.at(i);
-			if (view.empty())          // If no more images then run calibration, save and stop loop.
-			{
-				if (imagePoints.size() > 0)
-					break;
-			}
-			imageSize = view.size();  // Format input image.
-			std::vector<cv::Point2f> pointBuf;
-			bool found;
-			found = cv::findChessboardCorners(view, s.boardSize, pointBuf, cv::CALIB_CB_ADAPTIVE_THRESH | cv::CALIB_CB_FAST_CHECK | cv::CALIB_CB_NORMALIZE_IMAGE);
+	}*/
 
 
-			if (found)                // If done with success,
-			{
-				cv::Mat viewGray;
-				cv::cvtColor(view, viewGray, cv::COLOR_BGR2GRAY);
-				cv::cornerSubPix(viewGray, pointBuf, cv::Size(11, 11),
-					cv::Size(-1, -1), cv::TermCriteria(cv::TermCriteria::EPS + cv::TermCriteria::COUNT, 30, 0.1));
-
-				// Draw the corners.
-				drawChessboardCorners(view, s.boardSize, cv::Mat(pointBuf), found);
-			}
-		}
-
-		runCalibrationAndSave(s, imageSize, cameraMatrix, distCoeffs, imagePoints);
-
-
-		// -----------------------Show the undistorted image for the image list ------------------------
-		if (s.showUndistorsed)
-		{
-			cv::Mat view, rview, map1, map2;
-			initUndistortRectifyMap(cameraMatrix, distCoeffs, cv::Mat(),
-				getOptimalNewCameraMatrix(cameraMatrix, distCoeffs, imageSize, 1, imageSize, 0),
-				imageSize, CV_16SC2, map1, map2);
-
-			for (int i = 0; i < images.size(); i++)
-			{
-				view = images.at(i);
-				if (view.empty())
-					continue;
-				remap(view, rview, map1, map2, cv::INTER_LINEAR);
-				cv::imshow("Image View", rview);
-				char c = (char)cv::waitKey();
-				if (c == ESC_KEY || c == 'q' || c == 'Q')
-					break;
-			}
-		}
-
-
-		return 0;
-	}
 
 	static double computeReprojectionErrors(const std::vector<std::vector<cv::Point3f> >& objectPoints,
 		const std::vector<std::vector<cv::Point2f> >& imagePoints,
