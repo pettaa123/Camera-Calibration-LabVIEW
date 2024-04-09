@@ -4,8 +4,8 @@
 #include <opencv2/highgui.hpp>
 #include <string>
 
-#define EXIT_SUCCESS 0
-#define EXIT_FAILURE 1
+//#define EXIT_SUCCESS 0
+//#define EXIT_FAILURE 1
 
 template <typename T>
 cv::Mat createMat(T* data, int rows, int cols, int chs = 1) {
@@ -153,6 +153,21 @@ int32_t calibrateCamera(const Arr2D_ClusterPointXYfHdl extractedPoints, int flag
 		return EXIT_FAILURE;
 	}
 	return EXIT_SUCCESS;
+}
+
+int32_t undistort(const Arr2D_U16Hdl inOutput, Arr2D_DBLHdl cameraMatrix, Arr_DBLHdl distCoeffs) {
+
+	int rows = (*inOutput)->dimSizes[0];
+	int cols = (*inOutput)->dimSizes[1];
+
+	//dimension check
+	if (rows == 0 || cols == 0)
+		return EXIT_FAILURE;
+
+	cv::Mat input = createMat(&(**inOutput).elt[0], rows, cols);
+
+	cv::Mat output;
+	cv::undistort(input, output, cameraMatrix, distCoeffs);
 }
 
 /*int32_t extractCornersMulti(const Arr3D_U16Hdl images, const Arr2D_ClusterPointXYHdl maskPolygons, \

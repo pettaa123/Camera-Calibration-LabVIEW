@@ -112,6 +112,8 @@ Arr_ClusterPointXYfHdl extractedPoints, Arr3D_U32Hdl imagesExtracted, int adapti
 
 extern "C" OPENCVCALIBDLL_API int32_t calibrateCamera(const Arr2D_ClusterPointXYfHdl extractedPoints, int flags, Arr2D_DBLHdl intrinsics, Arr_DBLHdl distCoeffs, Arr_SGLHdl reprojErrs, double &totalAvgErr);
 
+extern "C" OPENCVCALIBDLL_API int32_t undistort(const Arr2D_U16Hdl inOutput, Arr2D_DBLHdl cameraMatrix, Arr_DBLHdl	distCoeffs);
+
 /*extern "C" OPENCVCALIBDLL_API int32_t extractCornersMulti(const Arr3D_U16Hdl images, const Arr2D_ClusterPointXYHdl maskPolygons, \
 	const uint32_t cbRows,const uint32_t cbCols, Arr2D_ClusterPointXYfHdl extractedPoints, Arr3D_U32Hdl imagesExtracted);*/
 //extern "C" OPENCVCALIBDLL_API int32_t calibrateCamera(const Arr3D_U16Hdl images,const Arr3D_DBLHdl masks, Arr3D_DBLHdl extractedPoints);
